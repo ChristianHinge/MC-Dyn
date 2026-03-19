@@ -81,6 +81,7 @@ class StudyMetadata:
     sex: str | None          # "M" or "F"
     weight_kg: float | None
     height_cm: float | None
+    injected_dose_mbq: float | None
 
     @property
     def bmi(self) -> float | None:

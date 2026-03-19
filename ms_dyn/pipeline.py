@@ -142,28 +142,15 @@ def run_case(paths: CasePaths, config: PipelineConfig) -> StudyMetadata | None:
     fmt = None
     study_meta: StudyMetadata | None = None
     timing = None
-    seg_nii_path = None
-    label_map: dict[int, str] = {}
-    aorta_label: int | None = None
+    # model_results: list of (ct_seg_path, label_map) — one per Moose model, never merged
+    model_results: list[tuple[Path, dict[int, str]]] = []
+    # aorta_ct: (ct_seg_path, label_int) for the model containing the aorta, or None
+    aorta_ct: tuple[Path, int] | None = None
     all_tacs = None
-
-    def _run(stage_name: str, fn, *args, **kwargs):
-        if ckpt.is_completed(stage_name):
-            log.debug("[%s] Skipping completed stage: %s", paths.case_id, stage_name)
-            return True
-        try:
-            result = fn(*args, **kwargs)
-            ckpt.mark_completed(stage_name)
-            return result
-        except Exception as exc:
-            ckpt.mark_failed(stage_name, str(exc))
-            log.error("[%s] Stage %s failed: %s", paths.case_id, stage_name, exc, exc_info=True)
-            return None
 
     # detect
     log.info("[%s] Stage: detect", paths.case_id)
     fmt = detect.detect_input_format(paths.pet_dir, paths.ct_dir)
-    _run("detect", lambda: None)  # detect always re-runs (fast, stateless)
     ckpt.mark_completed("detect")
 
     # convert
@@ -179,28 +166,20 @@ def run_case(paths: CasePaths, config: PipelineConfig) -> StudyMetadata | None:
 
     # metadata
     log.info("[%s] Stage: metadata", paths.case_id)
-    if not ckpt.is_completed("metadata"):
-        try:
-            study_meta, _, _ = metadata.extract_metadata(paths, fmt)
-            timing = extract_frame_timing(paths.pet_json)
-            ckpt.mark_completed("metadata")
-        except Exception as exc:
-            ckpt.mark_failed("metadata", str(exc))
-            log.error("[%s] Stage metadata failed: %s", paths.case_id, exc, exc_info=True)
-            return None
-    else:
-        try:
-            study_meta, _, _ = metadata.extract_metadata(paths, fmt)
-            timing = extract_frame_timing(paths.pet_json)
-        except Exception as exc:
-            log.error("[%s] Cannot re-read metadata/timing: %s", paths.case_id, exc)
-            return None
+    try:
+        study_meta, _, _ = metadata.extract_metadata(paths, fmt)
+        timing = extract_frame_timing(paths.pet_json)
+        ckpt.mark_completed("metadata")
+    except Exception as exc:
+        ckpt.mark_failed("metadata", str(exc))
+        log.error("[%s] Stage metadata failed: %s", paths.case_id, exc, exc_info=True)
+        return None
 
-    # segment
+    # segment — each model produces its own NIfTI; label integers must NOT be merged
     log.info("[%s] Stage: segment", paths.case_id)
     if not ckpt.is_completed("segment"):
         try:
-            seg_nii_path, label_map, aorta_label = segment.run_segment(
+            model_results, aorta_ct = segment.run_segment(
                 paths, config.moose_models, config.accelerator
             )
             ckpt.mark_completed("segment")
@@ -209,61 +188,63 @@ def run_case(paths: CasePaths, config: PipelineConfig) -> StudyMetadata | None:
             log.error("[%s] Stage segment failed: %s", paths.case_id, exc, exc_info=True)
             return None
     else:
-        # Re-derive label_map from Moose output
         try:
-            from ms_dyn.stages.segment import _find_moose_seg_nii, _find_moose_labels_json
-            import json as _json
-            labels_json = _find_moose_labels_json(paths.seg_dir)
-            with open(labels_json) as f:
-                raw_labels = _json.load(f)
-            label_map = {}
-            for k, v in raw_labels.items():
-                if isinstance(v, int):
-                    label_map[v] = k
-                elif isinstance(k, str) and k.isdigit():
-                    label_map[int(k)] = str(v)
-            seg_nii_path = _find_moose_seg_nii(paths.seg_dir)
-            aorta_label = segment.find_aorta_label(label_map)
+            model_results, aorta_ct = segment.run_segment(
+                paths, config.moose_models, config.accelerator
+            )
         except Exception as exc:
             log.error("[%s] Cannot re-read segment outputs: %s", paths.case_id, exc)
             return None
 
-    # resample
+    # resample — one resampled NIfTI per model, stored alongside the CT-space segs
     log.info("[%s] Stage: resample", paths.case_id)
     if not ckpt.is_completed("resample"):
         try:
-            resample.resample_seg_to_pet(seg_nii_path, paths.pet_nii, paths.seg_pet_nii)
+            for ct_seg_path, _ in model_results:
+                pet_seg_path = segment.seg_pet_path(ct_seg_path)
+                resample.resample_seg_to_pet(ct_seg_path, paths.pet_nii, pet_seg_path)
             ckpt.mark_completed("resample")
         except Exception as exc:
             ckpt.mark_failed("resample", str(exc))
             log.error("[%s] Stage resample failed: %s", paths.case_id, exc, exc_info=True)
             return None
 
-    # extract
+    # extract — TACs extracted separately per model; task column identifies the model
     log.info("[%s] Stage: extract", paths.case_id)
     if not ckpt.is_completed("extract"):
         try:
-            # Determine task name from the first Moose model
-            task_name = f"moosez_{config.moose_models[0]}" if config.moose_models else "moosez"
-            all_tacs = extract.extract_organ_tacs(
-                pet_nii=paths.pet_nii,
-                seg_pet_nii=paths.seg_pet_nii,
-                timing=timing,
-                label_map=label_map,
-                case_id=paths.case_id,
-                task=task_name,
-                max_roi_size_factor=config.max_roi_size_factor,
-            )
-            # Also extract aorta input function if available
-            if aorta_label is not None:
+            tac_dfs: list[pd.DataFrame] = []
+
+            for ct_seg_path, label_map in model_results:
+                pet_seg_path = segment.seg_pet_path(ct_seg_path)
+                # Derive a readable task name from the seg filename
+                # e.g. "clin_CT_cardiac_segmentation_ct.nii.gz" → "moosez_clin_ct_cardiac"
+                stem = ct_seg_path.name.replace("_segmentation_ct.nii.gz", "").replace("_segmentation_CT.nii.gz", "")
+                task_name = f"moosez_{stem.lower()}"
+                df = extract.extract_organ_tacs(
+                    pet_nii=paths.pet_nii,
+                    seg_pet_nii=pet_seg_path,
+                    timing=timing,
+                    label_map=label_map,
+                    case_id=paths.case_id,
+                    task=task_name,
+                    max_roi_size_factor=config.max_roi_size_factor,
+                )
+                tac_dfs.append(df)
+
+            # Aorta input function (non-fatal if it fails)
+            if aorta_ct is not None:
+                aorta_ct_seg, aorta_label = aorta_ct
                 try:
-                    aorta_df = extract.extract_aorta_tac(paths, timing, aorta_label)
+                    aorta_df = extract.extract_aorta_tac(
+                        paths, timing, aorta_label, seg_nii=aorta_ct_seg
+                    )
                     if not aorta_df.empty:
-                        import pandas as _pd
-                        all_tacs = _pd.concat([all_tacs, aorta_df], ignore_index=True)
+                        tac_dfs.append(aorta_df)
                 except Exception as exc:
                     log.warning("[%s] Aorta IF extraction failed (non-fatal): %s", paths.case_id, exc)
 
+            all_tacs = pd.concat(tac_dfs, ignore_index=True) if tac_dfs else pd.DataFrame()
             ckpt.mark_completed("extract")
         except Exception as exc:
             ckpt.mark_failed("extract", str(exc))

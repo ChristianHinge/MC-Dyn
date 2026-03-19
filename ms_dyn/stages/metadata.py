@@ -55,6 +55,16 @@ def _first_dicom(directory: Path) -> pydicom.Dataset | None:
     return None
 
 
+def _injected_dose_mbq_from_dicom(ds: "pydicom.Dataset") -> float | None:
+    """Extract injected dose in MBq from RadiopharmaceuticalInformationSequence."""
+    seq = getattr(ds, "RadiopharmaceuticalInformationSequence", None)
+    if seq and len(seq) > 0:
+        dose_bq = getattr(seq[0], "RadionuclideTotalDose", None)
+        if dose_bq is not None:
+            return round(float(dose_bq) / 1e6, 3)  # Bq → MBq
+    return None
+
+
 def _extract_from_dicom(pet_dir: Path, case_id: str) -> tuple[StudyMetadata, str | None, str | None]:
     """Returns (StudyMetadata, patient_id, study_date)."""
     ds = _first_dicom(pet_dir)
@@ -77,6 +87,7 @@ def _extract_from_dicom(pet_dir: Path, case_id: str) -> tuple[StudyMetadata, str
         sex=sex,
         weight_kg=float(weight) if weight is not None else None,
         height_cm=height_cm,
+        injected_dose_mbq=_injected_dose_mbq_from_dicom(ds),
     )
     return meta, str(patient_id) if patient_id else None, str(study_date) if study_date else None
 
@@ -104,12 +115,17 @@ def _extract_from_json(json_path: Path, case_id: str) -> tuple[StudyMetadata, st
     size = sidecar.get("PatientSize")
     height_cm = round(float(size) * 100, 1) if size else None
 
+    # dcm2niix copies RadionuclideTotalDose (Bq) into JSON
+    dose_bq = sidecar.get("RadionuclideTotalDose")
+    injected_dose_mbq = round(float(dose_bq) / 1e6, 3) if dose_bq is not None else None
+
     meta = StudyMetadata(
         case_id=case_id,
         age=float(age) if age is not None else None,
         sex=sex,
         weight_kg=float(weight) if weight is not None else None,
         height_cm=height_cm,
+        injected_dose_mbq=injected_dose_mbq,
     )
     return meta, str(patient_id) if patient_id else None, str(study_date) if study_date else None
 
@@ -181,5 +197,6 @@ def extract_metadata(
             meta = StudyMetadata(
                 case_id=paths.case_id,
                 age=None, sex=None, weight_kg=None, height_cm=None,
+                injected_dose_mbq=None,
             )
             return meta, None, None

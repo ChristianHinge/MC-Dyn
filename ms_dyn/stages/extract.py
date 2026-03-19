@@ -10,7 +10,6 @@ import numpy as np
 import pandas as pd
 
 from ms_dyn.models import CasePaths, FrameTiming
-from ms_dyn.stages.segment import extract_aorta_input_function
 
 log = logging.getLogger(__name__)
 
@@ -105,50 +104,98 @@ def extract_aorta_tac(
     paths: CasePaths,
     timing: FrameTiming,
     aorta_label: int,
+    seg_nii: Path,
 ) -> pd.DataFrame:
     """
-    Extract aortic input function TAC using nifti_dynamic's extract_input_function CLI.
+    Extract aortic input function TACs using the nifti_dynamic Python API.
 
-    Returns a DataFrame with the same schema as organ TACs, with task="nifti_dynamic".
+    seg_nii is the CT-space Moose segmentation containing the aorta label.
+    It is resampled to PET space internally by nifti_dynamic.
+
+    Produces 8 TACs per case:
+      - 4 anatomical segments: ASCENDING, TOP, DESCENDING, DESCENDING_BOTTOM
+      - 2 extraction modes per segment:
+          * 1ml  — 3px-wide cylindrical VOI (1 mL)
+          * full — all voxels in that anatomical segment
+
+    Organ names: aorta_if_{segment}_1ml / aorta_if_{segment}_full
+    Task: nifti_dynamic
     """
-    output_csv = paths.output_dir / "aorta_input_function.csv"
-    extract_aorta_input_function(
-        pet_nii=paths.pet_nii,
-        seg_pet_nii=paths.seg_pet_nii,
-        pet_json=paths.pet_json,
-        aorta_label=aorta_label,
-        output_path=output_csv,
+    try:
+        from nifti_dynamic.aorta_rois import AortaSegment, pipeline  # type: ignore[import]
+        from nifti_dynamic.tacs import extract_tac  # type: ignore[import]
+        from nibabel.processing import resample_from_to
+    except ImportError as e:
+        raise ImportError("nifti_dynamic is not installed.") from e
+
+    aorta_if_dir = paths.output_dir / "aorta_if"
+    aorta_if_dir.mkdir(parents=True, exist_ok=True)
+
+    # Load PET and CT-space segmentation
+    dynpet = nib.load(paths.pet_nii)
+    seg_img = nib.load(seg_nii)
+
+    # Resample CT-space seg to PET space (same as nifti_dynamic CLI does internally)
+    seg_pet = resample_from_to(seg_img, (dynpet.shape[:3], dynpet.affine), order=0)
+
+    # Extract binary aorta mask
+    aorta_mask = nib.Nifti1Image(
+        (seg_pet.get_fdata() == aorta_label).astype("uint8"),
+        affine=seg_pet.affine,
     )
+    if aorta_mask.get_fdata().sum() == 0:
+        raise RuntimeError(
+            f"No aorta voxels found with label {aorta_label} in {seg_nii.name}"
+        )
 
-    if not output_csv.exists():
-        log.warning("[%s] Aorta input function CSV not produced — skipping", paths.case_id)
-        return pd.DataFrame()
+    frame_times_start = np.array(timing.frame_start_s)
 
-    # nifti_dynamic extract_input_function outputs per-VOI TACs
-    # The CLI saves using save_tac: columns = time, mu, std, n_voxels
-    # It may produce one file per VOI segment; we load whatever is in the output
-    raw = pd.read_csv(output_csv)
-    log.debug("[%s] Aorta IF CSV columns: %s", paths.case_id, list(raw.columns))
+    # Run pipeline once for 1ml VOIs (segment=None → all 4 segments)
+    aorta_segments, aorta_vois_1ml = pipeline(
+        aorta_mask=aorta_mask,
+        dpet=dynpet,
+        frame_times_start=frame_times_start,
+        volume_ml=1.0,
+        cylinder_width=3,
+        segment=None,
+        image_path=None,
+    )
+    log.info("[%s] Aorta segmented into 4 regions; extracting 8 input function TACs", paths.case_id)
 
+    n_frames = dynpet.shape[3]
+    voxel_vol = _voxel_volume_ml(seg_pet)
     rows: list[dict] = []
-    # Expected long-format from save_tac: time, mu, std, n_voxels
-    if {"time", "mu", "std"}.issubset(raw.columns):
-        n = len(raw)
-        for i, row in raw.iterrows():
-            frame_idx = int(i)
-            if frame_idx >= len(timing):
-                break
-            rows.append({
-                "case_id": paths.case_id,
-                "task": "nifti_dynamic",
-                "organ": "aorta_input_function",
-                "frame_idx": frame_idx,
-                "time_start_s": timing.frame_start_s[frame_idx],
-                "time_mid_s": timing.frame_mid_s[frame_idx],
-                "time_end_s": timing.frame_end_s[frame_idx],
-                "mean_value": float(row["mu"]),
-                "std_value": float(row["std"]),
-                "volume_ml": float(row.get("n_voxels", float("nan"))),
-            })
+
+    for seg_enum in AortaSegment:
+        seg_name = seg_enum.name.lower()
+
+        for mode, source_img in (("1ml", aorta_vois_1ml), ("full", aorta_segments)):
+            mask_arr = source_img.get_fdata() == seg_enum.value
+            if not mask_arr.any():
+                log.warning("[%s] Aorta segment %s has no voxels in %s mode", paths.case_id, seg_name, mode)
+                continue
+
+            mean_arr, std_arr, n_arr = extract_tac(dynpet, mask_arr)
+            volume_ml = round(float(n_arr[0]) * voxel_vol, 4) if mode == "full" else 1.0
+            organ_name = f"aorta_if_{seg_name}_{mode}"
+
+            for frame_idx in range(n_frames):
+                rows.append({
+                    "case_id": paths.case_id,
+                    "task": "nifti_dynamic",
+                    "organ": organ_name,
+                    "frame_idx": frame_idx,
+                    "time_start_s": timing.frame_start_s[frame_idx],
+                    "time_mid_s": timing.frame_mid_s[frame_idx],
+                    "time_end_s": timing.frame_end_s[frame_idx],
+                    "mean_value": float(mean_arr[frame_idx]),
+                    "std_value": float(std_arr[frame_idx]),
+                    "volume_ml": volume_ml,
+                })
+
+    # Save aorta_segments and aorta_vois for inspection
+    nib.save(aorta_segments, aorta_if_dir / "aorta_segments.nii.gz")
+    nib.save(aorta_vois_1ml, aorta_if_dir / "aorta_vois_1ml.nii.gz")
+    log.info("[%s] Aorta IF NIfTIs saved to %s", paths.case_id, aorta_if_dir)
 
     return pd.DataFrame(rows)

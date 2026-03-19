@@ -17,7 +17,7 @@ TAC_COLUMNS = [
     "mean_value", "std_value", "volume_ml",
 ]
 
-STUDY_COLUMNS = ["case_id", "age", "sex", "weight_kg", "height_cm", "bmi"]
+STUDY_COLUMNS = ["case_id", "age", "sex", "weight_kg", "height_cm", "bmi", "injected_dose_mbq"]
 
 
 def write_case_tacs(tacs: pd.DataFrame, output_path: Path) -> None:
@@ -65,6 +65,7 @@ def aggregate_outputs(
                 "weight_kg": m.weight_kg,
                 "height_cm": m.height_cm,
                 "bmi": m.bmi,
+                "injected_dose_mbq": m.injected_dose_mbq,
             }
             for m in study_metadata
         ]
