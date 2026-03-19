@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ms-dyn"
+name = "mc-dyn"
 version = "0.1.0"
-description = "Dynamic PET/CT TAC extraction pipeline"
+description = "Multi Center Dynamic PET/CT TAC extraction pipeline"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.0",
@@ -26,14 +26,14 @@ dev = [
 ]
 
 [project.scripts]
-ms-dyn = "ms_dyn.cli:main"
+mc-dyn = "mc_dyn.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ms_dyn*"]
+include = ["mc_dyn*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "integration: marks tests that require real imaging data (deselect with -m 'not integration')",
+    "integration: marks tests that require real imaging data (deselect with 'not integration')",
 ]

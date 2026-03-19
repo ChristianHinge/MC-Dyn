@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ms_dyn.stages.metadata import _parse_dicom_age, extract_frame_timing
+from mc_dyn.stages.metadata import _parse_dicom_age, extract_frame_timing
 
 
 class TestParseDicomAge:

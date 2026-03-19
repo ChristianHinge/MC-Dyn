@@ -8,7 +8,7 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from ms_dyn.stages.resample import resample_seg_to_pet
+from mc_dyn.stages.resample import resample_seg_to_pet
 
 
 def _make_seg(path: Path, shape=(20, 20, 20), affine=None) -> Path:

@@ -1,4 +1,4 @@
-"""CLI entry point for ms-dyn."""
+"""CLI entry point for mc-dyn."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 
 import click
 
-from ms_dyn.config import PipelineConfig
-from ms_dyn.pipeline import run_batch
+from mc_dyn.config import PipelineConfig
+from mc_dyn.pipeline import run_batch
 
 
 def _setup_logging(verbose: bool) -> None:
@@ -24,7 +24,7 @@ def _setup_logging(verbose: bool) -> None:
 
 @click.group()
 def main() -> None:
-    """MS-Dyn: Dynamic PET/CT TAC extraction pipeline."""
+    """MC-Dyn: Multi Center Dynamic PET/CT TAC extraction pipeline."""
 
 
 @main.command("run")

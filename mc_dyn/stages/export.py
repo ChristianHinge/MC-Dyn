@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ms_dyn.models import StudyMetadata
+from mc_dyn.models import StudyMetadata
 
 log = logging.getLogger(__name__)
 

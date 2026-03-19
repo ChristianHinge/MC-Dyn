@@ -9,7 +9,7 @@ import nibabel as nib
 import numpy as np
 import pandas as pd
 
-from ms_dyn.models import CasePaths, FrameTiming
+from mc_dyn.models import CasePaths, FrameTiming
 
 log = logging.getLogger(__name__)
 

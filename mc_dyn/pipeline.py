@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ms_dyn.checkpoint import CheckpointManager
-from ms_dyn.config import PipelineConfig
-from ms_dyn.models import CasePaths, RawCase, StudyMetadata
-from ms_dyn.stages import detect, convert, metadata, segment, resample, extract, export
-from ms_dyn.stages.metadata import extract_frame_timing
+from mc_dyn.checkpoint import CheckpointManager
+from mc_dyn.config import PipelineConfig
+from mc_dyn.models import CasePaths, RawCase, StudyMetadata
+from mc_dyn.stages import detect, convert, metadata, segment, resample, extract, export
+from mc_dyn.stages.metadata import extract_frame_timing
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def _assign_case_ids(
             )
             # Copy JSON if NIfTI input (needed for _extract_from_json)
             if not fmt.is_dicom:
-                from ms_dyn.stages.convert import _find_nifti, _find_json_sidecar
+                from mc_dyn.stages.convert import _find_nifti, _find_json_sidecar
                 src_nii = _find_nifti(raw.pet_dir)
                 src_json = _find_json_sidecar(src_nii)
                 if src_json:

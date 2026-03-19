@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pydicom.misc
 
-from ms_dyn.models import InputFormat
+from mc_dyn.models import InputFormat
 
 log = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pydicom
 
-from ms_dyn.models import CasePaths, FrameTiming, InputFormat, StudyMetadata
+from mc_dyn.models import CasePaths, FrameTiming, InputFormat, StudyMetadata
 
 log = logging.getLogger(__name__)
 

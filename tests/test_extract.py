@@ -8,11 +8,11 @@ import nibabel as nib
 import numpy as np
 import pytest
 
-from ms_dyn.models import FrameTiming
+from mc_dyn.models import FrameTiming
 
 pytest.importorskip("nifti_dynamic", reason="nifti_dynamic not installed")
 
-from ms_dyn.stages.extract import extract_organ_tacs
+from mc_dyn.stages.extract import extract_organ_tacs
 
 
 AFFINE = np.diag([4.0, 4.0, 4.0, 1.0])

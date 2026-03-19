@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ms_dyn.models import CasePaths
+from mc_dyn.models import CasePaths
 
 log = logging.getLogger(__name__)
 

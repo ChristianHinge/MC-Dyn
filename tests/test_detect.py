@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ms_dyn.stages.detect import detect_input_format
+from mc_dyn.stages.detect import detect_input_format
 
 
 def _make_nifti(directory: Path) -> Path:

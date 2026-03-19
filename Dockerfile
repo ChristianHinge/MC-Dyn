@@ -1,8 +1,8 @@
-# MS-Dyn: Dynamic PET/CT TAC extraction pipeline
+# MC-Dyn: Dynamic PET/CT TAC extraction pipeline
 #
-# Build: docker build -t ms-dyn .
+# Build: docker build -t mc-dyn .
 # Run:   docker run --gpus all -v /data/input:/input:ro -v /data/output:/output \
-#            ms-dyn run /input --output /output
+#            mc-dyn run /input --output /output
 
 FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 
@@ -30,7 +30,7 @@ WORKDIR /app
 
 # Install Python dependencies first (cached layer)
 COPY pyproject.toml .
-COPY ms_dyn/ ms_dyn/
+COPY mc_dyn/ mc_dyn/
 
 # Install the package and all dependencies
 RUN pip install -e .
@@ -49,5 +49,5 @@ import os
 print('Moose model pre-download: configure RUN step as needed for your moosez version.')
 " || true
 
-ENTRYPOINT ["ms-dyn"]
+ENTRYPOINT ["mc-dyn"]
 CMD ["--help"]

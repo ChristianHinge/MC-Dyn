@@ -11,7 +11,7 @@ from pathlib import Path
 
 import nibabel as nib
 
-from ms_dyn.models import CasePaths, InputFormat
+from mc_dyn.models import CasePaths, InputFormat
 
 log = logging.getLogger(__name__)
 

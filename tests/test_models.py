@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ms_dyn.models import FrameTiming, StudyMetadata
+from mc_dyn.models import FrameTiming, StudyMetadata
 
 
 class TestFrameTiming:

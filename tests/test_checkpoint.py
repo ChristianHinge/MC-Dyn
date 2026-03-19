@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ms_dyn.checkpoint import CheckpointManager, STAGES
+from mc_dyn.checkpoint import CheckpointManager, STAGES
 
 
 def test_initial_state_all_pending(tmp_path: Path) -> None:
