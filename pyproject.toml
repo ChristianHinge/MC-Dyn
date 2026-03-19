@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ms-dyn"
+version = "0.1.0"
+description = "Dynamic PET/CT TAC extraction pipeline"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "nibabel>=5.0",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "pydicom>=2.4",
+    "scipy>=1.10",
+    "indexed_gzip",
+    "nifti_dynamic",
+    "moosez",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+]
+
+[project.scripts]
+ms-dyn = "ms_dyn.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ms_dyn*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: marks tests that require real imaging data (deselect with -m 'not integration')",
+]
