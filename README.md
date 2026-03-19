@@ -25,11 +25,6 @@ Requires `dcm2niix` on PATH for DICOM input.
 # Process all cases
 mc-dyn run /data/input --output /data/output
 
-# With multiple Moose models (run each separately, no label merging)
-mc-dyn run /data/input --output /data/output \
-    --model clin_ct_organs \
-    --model clin_ct_cardiac
-
 # Force re-run all stages
 mc-dyn run /data/input --output /data/output --overwrite
 
@@ -69,7 +64,5 @@ docker build -t mc-dyn .
 docker run --gpus all \
   -v /data/input:/input:ro \
   -v /data/output:/output \
-  mc-dyn run /input --output /output \
-    --model clin_ct_organs \
-    --model clin_ct_cardiac
+  mc-dyn run /input --output /output
 ```

@@ -48,14 +48,6 @@ def main() -> None:
     help="Limit to specific cases (relative path from INPUT_DIR). Can be repeated.",
 )
 @click.option(
-    "--model",
-    "models",
-    multiple=True,
-    default=["clin_ct_organs"],
-    show_default=True,
-    help="Moose model name(s) to run for segmentation. Can be repeated.",
-)
-@click.option(
     "--accelerator",
     default="cuda",
     show_default=True,
@@ -75,7 +67,6 @@ def run_cmd(
     output: Path,
     overwrite: bool,
     cases: tuple[str, ...],
-    models: tuple[str, ...],
     accelerator: str,
     max_roi_size_factor: float,
     verbose: bool,
@@ -95,7 +86,6 @@ def run_cmd(
         output_dir=output,
         overwrite=overwrite,
         cases_filter=list(cases),
-        moose_models=list(models),
         accelerator=accelerator,
         max_roi_size_factor=max_roi_size_factor,
     )
